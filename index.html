@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>おてつだいきろく</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      background: #FFF8E7;
+      color: #333;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .header h1 {
+      font-size: 28px;
+      color: #FF6B6B;
+    }
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 0 4px;
+    }
+    .nav button {
+      font-size: 28px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 12px;
+      min-width: 60px;
+      min-height: 60px;
+    }
+    .nav button:active { background: #eee; }
+    .nav .month-label {
+      font-size: 22px;
+      font-weight: bold;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th {
+      font-size: 14px;
+      padding: 8px 0;
+      color: #888;
+    }
+    th:first-child { color: #E57373; }
+    th:last-child { color: #64B5F6; }
+    td {
+      text-align: center;
+      vertical-align: top;
+      padding: 4px;
+      height: 64px;
+    }
+    .day-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 20px;
+      position: relative;
+      transition: background 0.15s;
+    }
+    .day-cell:active { background: #FFE0B2; }
+    .day-cell.today {
+      background: #FFEB3B;
+      font-weight: bold;
+    }
+    .day-cell.has-record::after {
+      content: '';
+      display: block;
+      width: 8px;
+      height: 8px;
+      background: #66BB6A;
+      border-radius: 50%;
+      margin-top: 2px;
+    }
+    .day-cell.sun { color: #E57373; }
+    .day-cell.sat { color: #64B5F6; }
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+    }
+    .footer a {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #78909C;
+      color: white;
+      text-decoration: none;
+      border-radius: 12px;
+      font-size: 16px;
+      min-height: 48px;
+      line-height: 24px;
+    }
+    .footer a:active { background: #546E7A; }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🌟 おてつだいきろく 🌟</h1>
+  </div>
+  <div class="nav">
+    <button id="prev-btn">◀</button>
+    <span class="month-label" id="month-label"></span>
+    <button id="next-btn">▶</button>
+  </div>
+  <div id="calendar-area">
+    <div class="loading">よみこみちゅう...</div>
+  </div>
+  <div class="footer">
+    <a href="summary.html" id="summary-link">📊 まとめをみる</a>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script>
+    const WEEKDAYS = ['にち', 'げつ', 'か', 'すい', 'もく', 'きん', 'ど'];
+    let currentYear, currentMonth;
+    let monthData = {};
+
+    function init() {
+      const today = new Date();
+      currentYear = today.getFullYear();
+      currentMonth = today.getMonth() + 1;
+      document.getElementById('prev-btn').addEventListener('click', () => changeMonth(-1));
+      document.getElementById('next-btn').addEventListener('click', () => changeMonth(1));
+      renderMonth();
+    }
+
+    function changeMonth(delta) {
+      currentMonth += delta;
+      if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      renderMonth();
+    }
+
+    function yearMonth() {
+      return `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    }
+
+    async function renderMonth() {
+      const ym = yearMonth();
+      document.getElementById('month-label').textContent =
+        `${currentYear}ねん ${currentMonth}がつ`;
+      document.getElementById('summary-link').href =
+        `summary.html?month=${ym}`;
+
+      const area = document.getElementById('calendar-area');
+      area.innerHTML = '<div class="loading">よみこみちゅう...</div>';
+
+      try {
+        monthData = await readMonthData(ym);
+      } catch (e) {
+        monthData = {};
+      }
+
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+      const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+      let html = '<table><thead><tr>';
+      WEEKDAYS.forEach(d => html += `<th>${d}</th>`);
+      html += '</tr></thead><tbody><tr>';
+
+      for (let i = 0; i < firstDay; i++) html += '<td></td>';
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const dow = (firstDay + day - 1) % 7;
+        if (dow === 0 && day > 1) html += '</tr><tr>';
+        const dateStr = `${ym}-${String(day).padStart(2, '0')}`;
+        const isToday = dateStr === todayStr;
+        const hasRecord = monthData[dateStr] && Object.values(monthData[dateStr]).some(v => v > 0);
+        let cls = 'day-cell';
+        if (isToday) cls += ' today';
+        if (hasRecord) cls += ' has-record';
+        if (dow === 0) cls += ' sun';
+        if (dow === 6) cls += ' sat';
+        html += `<td><div class="${cls}" onclick="goDay('${dateStr}')">${day}</div></td>`;
+      }
+
+      const lastDow = (firstDay + daysInMonth - 1) % 7;
+      for (let i = lastDow + 1; i < 7; i++) html += '<td></td>';
+      html += '</tr></tbody></table>';
+      area.innerHTML = html;
+    }
+
+    function goDay(dateStr) {
+      location.href = `day.html?date=${dateStr}`;
+    }
+
+    init();
+  </script>
+</body>
+</html>

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>きょうのおてつだい</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      background: #FFF8E7;
+      color: #333;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .back-btn {
+      font-size: 24px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 12px;
+      min-width: 60px;
+      min-height: 60px;
+    }
+    .back-btn:active { background: #eee; }
+    .header h1 {
+      flex: 1;
+      text-align: center;
+      font-size: 22px;
+      color: #FF6B6B;
+      margin-right: 60px; /* back-btnとのバランス */
+    }
+    .date-label {
+      text-align: center;
+      font-size: 20px;
+      margin-bottom: 20px;
+      color: #666;
+    }
+    .task-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .task-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px 8px;
+      border: 3px solid #E0E0E0;
+      border-radius: 16px;
+      background: white;
+      cursor: pointer;
+      min-height: 100px;
+      transition: transform 0.1s, border-color 0.2s, background 0.2s;
+      position: relative;
+      overflow: hidden;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .task-btn:active { transform: scale(0.96); }
+    .task-btn.done {
+      border-color: #66BB6A;
+      background: #E8F5E9;
+    }
+    .task-btn .emoji {
+      font-size: 40px;
+      margin-bottom: 4px;
+    }
+    .task-btn .label {
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .task-btn .count {
+      font-size: 14px;
+      color: #888;
+      margin-top: 2px;
+    }
+    .task-btn .count.has {
+      color: #2E7D32;
+      font-weight: bold;
+    }
+
+    /* スタンプアニメーション */
+    .stamp-effect {
+      position: absolute;
+      font-size: 60px;
+      pointer-events: none;
+      animation: stamp 0.5s ease-out forwards;
+    }
+    @keyframes stamp {
+      0% {
+        transform: scale(2) rotate(-15deg);
+        opacity: 0.9;
+      }
+      50% {
+        transform: scale(1.1) rotate(5deg);
+        opacity: 0.7;
+      }
+      100% {
+        transform: scale(1) rotate(0deg);
+        opacity: 0;
+      }
+    }
+
+    .status-bar {
+      text-align: center;
+      margin-top: 20px;
+      min-height: 32px;
+    }
+    .status-bar .saving {
+      color: #FF9800;
+      font-size: 16px;
+    }
+    .status-bar .saved {
+      color: #66BB6A;
+      font-size: 16px;
+    }
+    .status-bar .error {
+      color: #E53935;
+      font-size: 14px;
+    }
+    .retry-btn {
+      margin-top: 8px;
+      padding: 10px 20px;
+      font-size: 16px;
+      background: #FF9800;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .retry-btn:active { background: #F57C00; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="location.href='index.html'">◀ もどる</button>
+    <h1>🌟 おてつだい 🌟</h1>
+  </div>
+  <div class="date-label" id="date-label"></div>
+  <div class="task-grid" id="task-grid"></div>
+  <div class="status-bar" id="status-bar"></div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const dateStr = params.get('date');
+    if (!dateStr) location.href = 'index.html';
+
+    const yearMonth = dateStr.substring(0, 7);
+    let monthData = {};
+    let dayData = {};
+    let saveTimer = null;
+    let saving = false;
+
+    function init() {
+      // 日付表示
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const weekDays = ['にちようび', 'げつようび', 'かようび', 'すいようび', 'もくようび', 'きんようび', 'どようび'];
+      const dow = new Date(y, m - 1, d).getDay();
+      document.getElementById('date-label').textContent =
+        `${m}がつ ${d}にち（${weekDays[dow]}）`;
+
+      renderGrid();
+      loadData();
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById('task-grid');
+      grid.innerHTML = '';
+      TASKS.forEach(task => {
+        const count = dayData[task.id] || 0;
+        const btn = document.createElement('div');
+        btn.className = 'task-btn' + (count > 0 ? ' done' : '');
+        btn.innerHTML = `
+          <span class="emoji">${task.emoji}</span>
+          <span class="label">${task.label}</span>
+          <span class="count ${count > 0 ? 'has' : ''}">${count > 0 ? count + 'かい' : ''}</span>
+        `;
+        btn.addEventListener('click', () => onTaskTap(task, btn));
+        grid.appendChild(btn);
+      });
+    }
+
+    function onTaskTap(task, btn) {
+      dayData[task.id] = (dayData[task.id] || 0) + 1;
+
+      // スタンプエフェクト
+      const stamp = document.createElement('span');
+      stamp.className = 'stamp-effect';
+      stamp.textContent = task.emoji;
+      btn.appendChild(stamp);
+      stamp.addEventListener('animationend', () => stamp.remove());
+
+      renderGrid();
+      scheduleSave();
+    }
+
+    function scheduleSave() {
+      if (saveTimer) clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => doSave(), 1500);
+    }
+
+    async function doSave() {
+      const statusBar = document.getElementById('status-bar');
+      statusBar.innerHTML = '<span class="saving">ほぞんちゅう...</span>';
+      saving = true;
+
+      monthData[dateStr] = dayData;
+
+      try {
+        await writeMonthData(yearMonth, monthData);
+        statusBar.innerHTML = '<span class="saved">✓ ほぞんしました</span>';
+        setTimeout(() => {
+          if (!saving) statusBar.innerHTML = '';
+        }, 2000);
+      } catch (err) {
+        console.error('Save failed:', err);
+        // ローカルキャッシュに保存
+        localStorage.setItem(`cache_${yearMonth}`, JSON.stringify(monthData));
+        statusBar.innerHTML = `
+          <span class="error">ほぞんできませんでした</span><br>
+          <button class="retry-btn" onclick="doSave()">もういちどほぞん</button>
+        `;
+      }
+      saving = false;
+    }
+
+    async function loadData() {
+      try {
+        monthData = await readMonthData(yearMonth);
+        dayData = monthData[dateStr] || {};
+        renderGrid();
+      } catch (e) {
+        console.error('Load failed:', e);
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

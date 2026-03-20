@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>まとめ</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      background: #FFF8E7;
+      color: #333;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .back-btn {
+      font-size: 24px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 12px;
+      min-width: 60px;
+      min-height: 60px;
+    }
+    .back-btn:active { background: #eee; }
+    .header h1 {
+      flex: 1;
+      text-align: center;
+      font-size: 22px;
+      color: #FF6B6B;
+      margin-right: 60px;
+    }
+    .nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .nav button {
+      font-size: 28px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 16px;
+      border-radius: 12px;
+      min-width: 60px;
+      min-height: 60px;
+    }
+    .nav button:active { background: #eee; }
+    .nav .month-label {
+      font-size: 22px;
+      font-weight: bold;
+    }
+    .chart-container {
+      background: white;
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .chart-container h2 {
+      font-size: 18px;
+      margin-bottom: 12px;
+      color: #555;
+    }
+    canvas {
+      max-height: 300px;
+    }
+    .actions {
+      text-align: center;
+      margin-top: 16px;
+    }
+    .csv-btn {
+      padding: 12px 24px;
+      font-size: 16px;
+      background: #42A5F5;
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .csv-btn:active { background: #1E88E5; }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      font-size: 18px;
+      color: #999;
+    }
+    .total-box {
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: #FF6B6B;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button class="back-btn" onclick="location.href='index.html'">◀ もどる</button>
+    <h1>📊 まとめ</h1>
+  </div>
+  <div class="nav">
+    <button id="prev-btn">◀</button>
+    <span class="month-label" id="month-label"></span>
+    <button id="next-btn">▶</button>
+  </div>
+  <div id="content">
+    <div class="loading">よみこみちゅう...</div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="api.js"></script>
+  <script>
+    let currentYear, currentMonth;
+    let barChart = null, lineChart = null;
+
+    function init() {
+      const params = new URLSearchParams(location.search);
+      const month = params.get('month');
+      if (month) {
+        [currentYear, currentMonth] = month.split('-').map(Number);
+      } else {
+        const today = new Date();
+        currentYear = today.getFullYear();
+        currentMonth = today.getMonth() + 1;
+      }
+      document.getElementById('prev-btn').addEventListener('click', () => changeMonth(-1));
+      document.getElementById('next-btn').addEventListener('click', () => changeMonth(1));
+      renderSummary();
+    }
+
+    function changeMonth(delta) {
+      currentMonth += delta;
+      if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+      if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+      renderSummary();
+    }
+
+    function yearMonth() {
+      return `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+    }
+
+    async function renderSummary() {
+      const ym = yearMonth();
+      document.getElementById('month-label').textContent =
+        `${currentYear}ねん ${currentMonth}がつ`;
+
+      const content = document.getElementById('content');
+      content.innerHTML = '<div class="loading">よみこみちゅう...</div>';
+
+      let monthData;
+      try {
+        monthData = await readMonthData(ym);
+      } catch (e) {
+        monthData = {};
+      }
+
+      // 集計
+      const taskTotals = {};
+      const dailyTotals = {};
+      TASKS.forEach(t => taskTotals[t.id] = 0);
+
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = `${ym}-${String(d).padStart(2, '0')}`;
+        dailyTotals[d] = 0;
+        if (monthData[key]) {
+          Object.entries(monthData[key]).forEach(([taskId, count]) => {
+            if (taskTotals[taskId] !== undefined) taskTotals[taskId] += count;
+            dailyTotals[d] += count;
+          });
+        }
+      }
+
+      const grandTotal = Object.values(taskTotals).reduce((a, b) => a + b, 0);
+
+      content.innerHTML = `
+        <div class="total-box">こんげつのごうけい: ${grandTotal}かい 🎉</div>
+        <div class="chart-container">
+          <h2>おてつだいべつ</h2>
+          <canvas id="bar-chart"></canvas>
+        </div>
+        <div class="chart-container">
+          <h2>まいにちのすうじ</h2>
+          <canvas id="line-chart"></canvas>
+        </div>
+        <div class="actions">
+          <button class="csv-btn" onclick="downloadCSV()">📥 CSVダウンロード</button>
+        </div>
+      `;
+
+      // 棒グラフ
+      const barCtx = document.getElementById('bar-chart').getContext('2d');
+      if (barChart) barChart.destroy();
+      barChart = new Chart(barCtx, {
+        type: 'bar',
+        data: {
+          labels: TASKS.map(t => t.emoji + ' ' + t.label),
+          datasets: [{
+            data: TASKS.map(t => taskTotals[t.id]),
+            backgroundColor: [
+              '#FF8A80', '#FFD180', '#FFFF8D', '#B9F6CA',
+              '#84FFFF', '#82B1FF', '#B388FF', '#FF80AB'
+            ],
+            borderRadius: 8,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          }
+        }
+      });
+
+      // 折れ線グラフ
+      const lineCtx = document.getElementById('line-chart').getContext('2d');
+      if (lineChart) lineChart.destroy();
+      const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+      lineChart = new Chart(lineCtx, {
+        type: 'line',
+        data: {
+          labels: days.map(d => d + 'にち'),
+          datasets: [{
+            label: 'おてつだいすう',
+            data: days.map(d => dailyTotals[d]),
+            borderColor: '#FF6B6B',
+            backgroundColor: 'rgba(255,107,107,0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: {
+            y: { beginAtZero: true, ticks: { stepSize: 1 } }
+          }
+        }
+      });
+    }
+
+    function downloadCSV() {
+      const ym = yearMonth();
+      const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+      // ヘッダー
+      let csv = 'ひづけ,' + TASKS.map(t => t.label).join(',') + ',ごうけい\n';
+
+      readMonthData(ym).then(monthData => {
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${ym}-${String(d).padStart(2, '0')}`;
+          const dayData = monthData[key] || {};
+          const counts = TASKS.map(t => dayData[t.id] || 0);
+          const total = counts.reduce((a, b) => a + b, 0);
+          csv += `${d}にち,${counts.join(',')},${total}\n`;
+        }
+
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `おてつだい_${ym}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    init();
+  </script>
+</body>
+</html>
