@@ -88,6 +88,25 @@
       color: #2E7D32;
       font-weight: bold;
     }
+    .minus-btn {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 2px solid #E57373;
+      background: #FFEBEE;
+      color: #C62828;
+      font-size: 20px;
+      font-weight: bold;
+      line-height: 26px;
+      text-align: center;
+      cursor: pointer;
+      display: none;
+    }
+    .minus-btn:active { background: #FFCDD2; }
+    .task-btn.done .minus-btn { display: block; }
 
     /* スタンプアニメーション */
     .stamp-effect {
@@ -187,10 +206,25 @@
           <span class="emoji">${task.emoji}</span>
           <span class="label">${task.label}</span>
           <span class="count ${count > 0 ? 'has' : ''}">${count > 0 ? count + 'かい' : ''}</span>
+          <span class="minus-btn">−</span>
         `;
+        const minusBtn = btn.querySelector('.minus-btn');
+        minusBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onTaskMinus(task);
+        });
         btn.addEventListener('click', () => onTaskTap(task, btn));
         grid.appendChild(btn);
       });
+    }
+
+    function onTaskMinus(task) {
+      const current = dayData[task.id] || 0;
+      if (current <= 0) return;
+      dayData[task.id] = current - 1;
+      if (dayData[task.id] === 0) delete dayData[task.id];
+      renderGrid();
+      scheduleSave();
     }
 
     function onTaskTap(task, btn) {
