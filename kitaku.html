@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>きたくご</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+      background: #FFF3E0;
+      color: #333;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .back-btn {
+      font-size: 18px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px 12px;
+      border-radius: 12px;
+      min-width: 48px;
+      min-height: 48px;
+    }
+    .back-btn:active { background: #FFE0B2; }
+    .header h1 {
+      font-size: 28px;
+      color: #EF6C00;
+    }
+    .columns {
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      max-width: 740px;
+      margin: 0 auto;
+    }
+    .column {
+      flex: 1;
+      max-width: 360px;
+      min-width: 0;
+      border-radius: 20px;
+      padding: 16px 12px;
+    }
+    .column.nami {
+      border: 3px solid #90CAF9;
+      background: rgba(187, 222, 251, 0.2);
+    }
+    .column-title {
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+      margin-bottom: 12px;
+      padding: 8px;
+      border-radius: 12px;
+    }
+    .column.nami .column-title {
+      background: #BBDEFB;
+      color: #1565C0;
+    }
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .checklist li {
+      background: white;
+      border-radius: 14px;
+      padding: 12px 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 17px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      transition: opacity 0.2s;
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .checklist li.done {
+      opacity: 0.5;
+      text-decoration: line-through;
+    }
+    .checklist li input[type="checkbox"] {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .column.nami .checklist li input[type="checkbox"] {
+      accent-color: #1E88E5;
+    }
+    .reward-area {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 16px;
+    }
+    .reward-area.show {
+      display: flex;
+    }
+    .complete-msg {
+      font-size: 22px;
+      margin-bottom: 10px;
+    }
+    .reward-img {
+      width: 100%;
+      max-width: 220px;
+      border-radius: 14px;
+    }
+    #fireworks {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .header, .columns {
+      position: relative;
+      z-index: 1;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="fireworks"></canvas>
+  <div class="header">
+    <button class="back-btn" onclick="location.href='index.html'">◀ もどる</button>
+    <h1>🏠 きたくご</h1>
+  </div>
+  <div class="columns">
+    <div class="column nami">
+      <div class="column-title">🐬 なみ</div>
+      <ul class="checklist" id="checklist-nami"></ul>
+      <div class="reward-area" id="reward-area-nami">
+        <div class="complete-msg">🎉 じゅんびかんりょう！</div>
+        <img id="reward-img-nami" class="reward-img" alt="ごほうび">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const TASKS_BY_USER = {
+      nami: [
+        '🪥 ハブラシをだす',
+        '🥤 コップをだす',
+        '🍴 ナプキンをだす',
+        '💧 すいとうをだす',
+        '📩 おたより・れんらくちょうをだす',
+        '✏️ しゅくだいをやる',
+        '📚 あしたのきょうかしょをいれる',
+      ],
+    };
+
+    const USERS = ['nami'];
+    const RANDOM_IMAGES = 12;
+
+    function getTodayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function storageKey(user) {
+      return `kitaku_checklist_${user}`;
+    }
+
+    function loadState(user) {
+      const taskCount = TASKS_BY_USER[user].length;
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey(user)));
+        if (saved && saved.date === getTodayStr() && saved.checked.length === taskCount) {
+          return saved.checked;
+        }
+      } catch (e) {}
+      return new Array(taskCount).fill(false);
+    }
+
+    function saveState(user, checked) {
+      localStorage.setItem(storageKey(user), JSON.stringify({
+        date: getTodayStr(),
+        checked: checked,
+      }));
+    }
+
+    function renderUser(user) {
+      const tasks = TASKS_BY_USER[user];
+      const checked = loadState(user);
+      const list = document.getElementById(`checklist-${user}`);
+      list.innerHTML = '';
+
+      tasks.forEach((task, i) => {
+        const li = document.createElement('li');
+        if (checked[i]) li.classList.add('done');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = checked[i];
+        cb.addEventListener('change', () => {
+          checked[i] = cb.checked;
+          saveState(user, checked);
+          li.classList.toggle('done', cb.checked);
+          updateComplete(user, checked);
+        });
+
+        li.addEventListener('click', (e) => {
+          if (e.target !== cb) {
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change'));
+          }
+        });
+
+        const label = document.createElement('span');
+        label.textContent = task;
+
+        li.appendChild(cb);
+        li.appendChild(label);
+        list.appendChild(li);
+      });
+
+      updateComplete(user, checked);
+    }
+
+    function updateComplete(user, checked) {
+      const done = checked.every(Boolean);
+      const area = document.getElementById(`reward-area-${user}`);
+      const img = document.getElementById(`reward-img-${user}`);
+      if (done) {
+        if (!img.src || !img.src.includes('images/random/')) {
+          const n = Math.floor(Math.random() * RANDOM_IMAGES) + 1;
+          img.src = `images/random/${n}.png`;
+        }
+        area.classList.add('show');
+        startFireworks();
+      } else {
+        area.classList.remove('show');
+        img.removeAttribute('src');
+        stopFireworks();
+      }
+    }
+
+    // ===== 花火アニメーション =====
+    const fwCanvas = document.getElementById('fireworks');
+    const fwCtx = fwCanvas.getContext('2d');
+    const FW_BG = 'rgba(255, 243, 224, 0.25)';
+    let fwRockets = [];
+    let fwParticles = [];
+    let fwActive = false;
+    let fwAnimId = null;
+    let fwLaunchTimer = 0;
+
+    function fwResize() {
+      fwCanvas.width = window.innerWidth;
+      fwCanvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', fwResize);
+    fwResize();
+
+    function fwLaunch() {
+      const x = fwCanvas.width * (0.15 + Math.random() * 0.7);
+      const targetY = fwCanvas.height * (0.02 + Math.random() * 0.18);
+      fwRockets.push({
+        x, y: fwCanvas.height, targetY,
+        vy: -(12 + Math.random() * 3),
+        hue: Math.floor(Math.random() * 360),
+      });
+    }
+
+    function fwExplode(r) {
+      const count = 50 + Math.floor(Math.random() * 30);
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1 + Math.random() * 4;
+        fwParticles.push({
+          x: r.x, y: r.y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          life: 1,
+          hue: r.hue + Math.floor(Math.random() * 30 - 15),
+        });
+      }
+    }
+
+    function fwTick() {
+      fwCtx.fillStyle = FW_BG;
+      fwCtx.fillRect(0, 0, fwCanvas.width, fwCanvas.height);
+
+      for (let i = fwRockets.length - 1; i >= 0; i--) {
+        const r = fwRockets[i];
+        r.x += (Math.random() - 0.5) * 0.3;
+        r.y += r.vy;
+        r.vy += 0.12;
+        fwCtx.beginPath();
+        fwCtx.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
+        fwCtx.fillStyle = `hsl(${r.hue}, 100%, 75%)`;
+        fwCtx.fill();
+        if (r.y <= r.targetY || r.vy >= 0) {
+          fwExplode(r);
+          fwRockets.splice(i, 1);
+        }
+      }
+
+      for (let i = fwParticles.length - 1; i >= 0; i--) {
+        const p = fwParticles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.04;
+        p.vx *= 0.99;
+        p.vy *= 0.99;
+        p.life -= 0.012;
+        if (p.life <= 0) { fwParticles.splice(i, 1); continue; }
+        fwCtx.beginPath();
+        fwCtx.arc(p.x, p.y, 2.2, 0, Math.PI * 2);
+        fwCtx.fillStyle = `hsla(${p.hue}, 100%, 65%, ${p.life})`;
+        fwCtx.fill();
+      }
+
+      if (fwActive) {
+        fwLaunchTimer--;
+        if (fwLaunchTimer <= 0) {
+          fwLaunch();
+          fwLaunchTimer = 25 + Math.floor(Math.random() * 35);
+        }
+      }
+
+      if (fwActive || fwRockets.length || fwParticles.length) {
+        fwAnimId = requestAnimationFrame(fwTick);
+      } else {
+        fwAnimId = null;
+        fwCtx.clearRect(0, 0, fwCanvas.width, fwCanvas.height);
+      }
+    }
+
+    function startFireworks() {
+      if (fwActive) return;
+      fwActive = true;
+      fwLaunchTimer = 0;
+      if (!fwAnimId) fwTick();
+    }
+
+    function stopFireworks() {
+      fwActive = false;
+    }
+
+    function renderAll() {
+      USERS.forEach(user => renderUser(user));
+    }
+
+    // 日付が変わったらリセット
+    let lastDate = getTodayStr();
+    setInterval(() => {
+      const now = getTodayStr();
+      if (now !== lastDate) {
+        lastDate = now;
+        USERS.forEach(user => localStorage.removeItem(storageKey(user)));
+        renderAll();
+      }
+    }, 30000);
+
+    renderAll();
+  </script>
+</body>
+</html>
