@@ -112,20 +112,46 @@
     .timer-display.negative {
       color: #E53935;
     }
-    .total-area {
+    .timer-area {
       max-width: 740px;
-      margin: 24px auto 0;
-      text-align: center;
+      margin: 28px auto 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      flex-wrap: wrap;
     }
-    .total-label {
-      font-size: 20px;
-      font-weight: bold;
-      color: #43A047;
-      margin-bottom: 4px;
+    .analog-timer {
+      width: min(44vw, 300px);
+      height: auto;
+      filter: drop-shadow(0 3px 8px rgba(0,0,0,0.12));
     }
-    .total-display {
-      font-size: 48px;
+    .timer-image {
+      width: min(44vw, 300px);
+      height: auto;
+      border-radius: 16px;
+    }
+    .face-bg { fill: #fff; }
+    .face-ring { fill: none; stroke: #43A047; stroke-width: 6; }
+    .wedge { fill: #29B6F6; }
+    .tick { stroke: #9E9E9E; stroke-width: 2; }
+    .tick.major { stroke: #555; stroke-width: 3.5; }
+    .num {
+      fill: #444;
+      font-family: inherit;
+      font-size: 16px;
       font-weight: bold;
+      text-anchor: middle;
+      dominant-baseline: central;
+    }
+    .hub { fill: #fff; }
+    .center-time {
+      fill: #333;
+      font-family: inherit;
+      font-size: 30px;
+      font-weight: bold;
+      text-anchor: middle;
+      dominant-baseline: central;
       font-variant-numeric: tabular-nums;
     }
     .done-msg {
@@ -147,7 +173,7 @@
       pointer-events: none;
       z-index: 0;
     }
-    .header, .columns, .total-area {
+    .header, .columns, .timer-area {
       position: relative;
       z-index: 1;
     }
@@ -181,12 +207,21 @@
       <div class="done-msg" id="done-rina">🙏 ごちそうさまでした</div>
     </div>
   </div>
-  <div class="total-area">
-    <div class="total-label">⏱ トータル</div>
-    <div class="total-display" id="timer-total">00:00</div>
+  <div class="timer-area">
+    <svg id="analog" class="analog-timer" viewBox="0 0 240 240" role="img" aria-label="30分タイマー">
+      <circle class="face-bg" cx="120" cy="120" r="112"></circle>
+      <path id="wedge" class="wedge"></path>
+      <g id="ticks"></g>
+      <g id="numbers"></g>
+      <circle class="face-ring" cx="120" cy="120" r="112"></circle>
+      <circle class="hub" cx="120" cy="120" r="46"></circle>
+      <text id="center-time" class="center-time" x="120" y="120">30:00</text>
+    </svg>
+    <img id="timer-image" class="timer-image" src="images/timer/30-20.png" alt="">
   </div>
 
   <script>
+    const TOTAL_DURATION = 30 * 60; // アナログタイマーは30分
     const seconds = { nami: 0, rina: 0 };
     const timers = { nami: null, rina: null };
     const stopCount = { nami: 0, rina: 0 };
@@ -206,12 +241,100 @@
       el.classList.toggle('negative', seconds[user] < 0);
     }
 
+    // ===== アナログ30分タイマー =====
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const CX = 120, CY = 120, R = 112, R_INNER = 76;
+
+    function pointOnCircle(r, angleDeg) {
+      // 12時方向を0度として時計回りに測る
+      const a = (angleDeg - 90) * Math.PI / 180;
+      return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+    }
+
+    function buildDial() {
+      const ticks = document.getElementById('ticks');
+      const numbers = document.getElementById('numbers');
+      for (let m = 0; m < 30; m++) {
+        const angle = (m / 30) * 360;
+        const major = m % 5 === 0;
+        const [x1, y1] = pointOnCircle(major ? 98 : 104, angle);
+        const [x2, y2] = pointOnCircle(112, angle);
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2); line.setAttribute('y2', y2);
+        line.setAttribute('class', 'tick' + (major ? ' major' : ''));
+        ticks.appendChild(line);
+      }
+      for (let r5 = 5; r5 <= 30; r5 += 5) {
+        const angle = (r5 / 30) * 360;
+        const [x, y] = pointOnCircle(86, angle);
+        const t = document.createElementNS(SVG_NS, 'text');
+        t.setAttribute('x', x); t.setAttribute('y', y);
+        t.setAttribute('class', 'num');
+        t.textContent = r5;
+        numbers.appendChild(t);
+      }
+    }
+
+    function wedgePath(fraction) {
+      fraction = Math.max(0, Math.min(1, fraction));
+      if (fraction === 0) return '';
+      const ro = R, ri = R_INNER;
+      if (fraction >= 1) {
+        const [ot, oty] = pointOnCircle(ro, 0);
+        const [ob, oby] = pointOnCircle(ro, 180);
+        const [it, ity] = pointOnCircle(ri, 0);
+        const [ib, iby] = pointOnCircle(ri, 180);
+        // 外周は時計回り・内周は反時計回りに描いてリング（中抜き）にする
+        return `M ${ot} ${oty} A ${ro} ${ro} 0 1 1 ${ob} ${oby} A ${ro} ${ro} 0 1 1 ${ot} ${oty} Z `
+             + `M ${it} ${ity} A ${ri} ${ri} 0 1 0 ${ib} ${iby} A ${ri} ${ri} 0 1 0 ${it} ${ity} Z`;
+      }
+      const end = fraction * 360;
+      const [osx, osy] = pointOnCircle(ro, 0);
+      const [oex, oey] = pointOnCircle(ro, end);
+      const [iex, iey] = pointOnCircle(ri, end);
+      const [isx, isy] = pointOnCircle(ri, 0);
+      const largeArc = end > 180 ? 1 : 0;
+      return `M ${osx} ${osy} A ${ro} ${ro} 0 ${largeArc} 1 ${oex} ${oey} `
+           + `L ${iex} ${iey} A ${ri} ${ri} 0 ${largeArc} 0 ${isx} ${isy} Z`;
+    }
+
+    function timerImageFor(remaining) {
+      // 30分を均等に4分割（各7分30秒 = 450秒）で切り替え
+      const q = TOTAL_DURATION / 4;
+      if (remaining > 3 * q) return 'images/timer/30-20.png';
+      if (remaining > 2 * q) return 'images/timer/20-10.png';
+      if (remaining > 1 * q) return 'images/timer/10-5.png';
+      return 'images/timer/5-0.png';
+    }
+
+    function updateAnalog() {
+      const remaining = Math.max(0, TOTAL_DURATION - totalSeconds);
+      const fraction = remaining / TOTAL_DURATION;
+      const wedge = document.getElementById('wedge');
+      wedge.setAttribute('d', wedgePath(fraction));
+      // 残りが少なく（0に近づく）なるほど 水色→緑→黄→赤 へ色相を変える
+      wedge.style.fill = `hsl(${fraction * 199}, 90%, 55%)`;
+      document.getElementById('center-time').textContent = formatTime(remaining);
+      const img = document.getElementById('timer-image');
+      const src = timerImageFor(remaining);
+      if (!img.src.endsWith(src)) img.src = src;
+    }
+
     function startTotal() {
       if (totalTimer) return;
-      const el = document.getElementById('timer-total');
+      updateAnalog();
       totalTimer = setInterval(() => {
         totalSeconds++;
-        el.textContent = formatTime(totalSeconds);
+        if (totalSeconds >= TOTAL_DURATION) {
+          totalSeconds = TOTAL_DURATION;
+          updateAnalog();
+          stopTotal();
+          // 30分経過：ブラウザ全体をタイムアップ画像にする
+          location.href = 'images/timer/timeup.png';
+          return;
+        }
+        updateAnalog();
       }, 1000);
     }
 
@@ -221,6 +344,15 @@
         totalTimer = null;
       }
     }
+
+    // 切り替え時のちらつき防止に4枚を先読み
+    ['30-20', '20-10', '10-5', '5-0'].forEach(name => {
+      const im = new Image();
+      im.src = `images/timer/${name}.png`;
+    });
+
+    buildDial();
+    updateAnalog();
 
     function start(user, direction) {
       clearInterval(timers[user]);
